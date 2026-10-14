@@ -1,0 +1,5 @@
+name,latest_version,source_url,status
+Python,3.15.0,https://www.python.org/downloads/,Success
+uv,0.13.0,https://api.github.com/repos/astral-sh/uv/releases/latest,Success
+Git,2.56.0.windows.2,https://api.github.com/repos/git-for-windows/git/releases/latest,Success
+Node.js,24.21.0,https://nodejs.org/dist/index.json,Success

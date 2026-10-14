@@ -1,0 +1,5 @@
+sno,name,version,url
+1,Python,3.12.9,https://www.python.org/
+2,uv,0.8.0,https://github.com/astral-sh/uv
+3,Git,,
+4,Node.js,,
