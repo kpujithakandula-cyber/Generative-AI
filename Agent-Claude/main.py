@@ -107,24 +107,35 @@ def get_latest_version(software_name):
 
         return tag.lstrip("v"), url
 
-    # Git for Windows: Official GitHub Releases API
+    # Git: Latest version available from Ubuntu repositories
     elif name == "git":
-        url = (
-            "https://api.github.com/repos/"
-            "git-for-windows/git/releases/latest"
+        import subprocess
+
+        url = "https://packages.ubuntu.com/noble/git"
+        response = subprocess.run(
+            ["apt-cache", "policy", "git"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=TIMEOUT,
         )
 
-        response = requests.get(
-            url, headers=HEADERS, timeout=TIMEOUT
+        match = re.search(
+            r"^\s*Candidate:\s*(\S+)",
+            response.stdout,
+            re.MULTILINE,
         )
-        response.raise_for_status()
 
-        tag = response.json().get("tag_name")
+        if not match or match.group(1) == "(none)":
+            raise ValueError(
+                "Git candidate version was not found in Ubuntu repositories."
+            )
 
-        if not tag:
-            raise ValueError("Git release version was not found.")
+        version = match.group(1)
+        version = re.sub(r"^\d+:", "", version)
+        version = re.sub(r"-[^-]+$", "", version)
 
-        return tag.lstrip("v"), url
+        return version, url
 
     # Node.js: Official release index
     elif name in ("node.js", "nodejs"):
