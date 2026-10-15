@@ -1,6 +1,7 @@
-
+import argparse
 import csv
 import re
+import subprocess
 from pathlib import Path
 
 import requests
@@ -13,8 +14,9 @@ REPORT_FILE = Path("version_report.csv")
 HEADERS = {
     "User-Agent": "SoftwareVersionTrackingAgent/1.0"
 }
-
 TIMEOUT = 20
+
+NO_AUTHOR = "No author name identified"
 
 
 def read_software_list():
@@ -40,33 +42,67 @@ def read_software_list():
                 "CSV must contain: sno, name, version, url"
             )
 
-        softwares = []
-
-        for row in reader:
-            name = (row.get("name") or "").strip()
-
-            if not name:
-                continue
-
-            softwares.append({
+        return [
+            {
                 "sno": (row.get("sno") or "").strip(),
-                "name": name,
+                "name": (row.get("name") or "").strip(),
                 "version": (row.get("version") or "").strip(),
                 "url": (row.get("url") or "").strip(),
-            })
+            }
+            for row in reader
+            if (row.get("name") or "").strip()
+        ]
 
-        return softwares
 
+def get_author(name: str) -> str:
+    """Return an explicitly declared author name from a text file."""
+
+    path = Path(name)
+
+    if not path.is_file():
+        return NO_AUTHOR
+
+    supported_extensions = {
+        ".py", ".txt", ".md", ".rst", ".csv",
+        ".yaml", ".yml", ".json", ".ini", ".cfg",
+        ".sh", ".js", ".ts", ".html", ".css", ".toml",
+    }
+
+    if path.suffix.lower() not in supported_extensions:
+        return NO_AUTHOR
+
+    try:
+        content = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return NO_AUTHOR
+
+    patterns = [
+        r'^\s*#\s*Author\s*[:=]\s*(.*?)\s*$',
+        r'^\s*//\s*Author\s*[:=]\s*(.*?)\s*$',
+        r'^\s*/\*\s*Author\s*[:=]\s*(.*?)\s*\*/\s*$',
+        r'^\s*<!--\s*Author\s*[:=]\s*(.*?)\s*-->\s*$',
+        r'^\s*Author\s*[:=]\s*(.*?)\s*$',
+        r'^\s*__author__\s*=\s*["\']([^"\']+)["\']',
+        r'^\s*["\']author["\']\s*:\s*["\']([^"\']+)["\']',
+    ]
+
+    for line in content.splitlines():
+        for pattern in patterns:
+            match = re.match(pattern, line, re.IGNORECASE)
+            if match:
+                author = match.group(1).strip().strip('"').strip("'")
+                if author:
+                    return author
+
+    return NO_AUTHOR
 
 def get_latest_version(software_name):
-    """Fetch the latest stable version from an official source."""
+    """Fetch version information from the configured sources."""
 
     name = software_name.strip().lower()
 
-    # Python: Official downloads page
     if name == "python":
         url = "https://www.python.org/downloads/"
-
         response = requests.get(
             url, headers=HEADERS, timeout=TIMEOUT
         )
@@ -88,13 +124,11 @@ def get_latest_version(software_name):
             "Could not extract Python's latest version."
         )
 
-    # uv: Official GitHub Releases API
     elif name == "uv":
         url = (
             "https://api.github.com/repos/"
             "astral-sh/uv/releases/latest"
         )
-
         response = requests.get(
             url, headers=HEADERS, timeout=TIMEOUT
         )
@@ -107,11 +141,9 @@ def get_latest_version(software_name):
 
         return tag.lstrip("v"), url
 
-    # Git: Latest version available from Ubuntu repositories
     elif name == "git":
-        import subprocess
-
         url = "https://packages.ubuntu.com/noble/git"
+
         response = subprocess.run(
             ["apt-cache", "policy", "git"],
             capture_output=True,
@@ -128,7 +160,8 @@ def get_latest_version(software_name):
 
         if not match or match.group(1) == "(none)":
             raise ValueError(
-                "Git candidate version was not found in Ubuntu repositories."
+                "Git candidate version was not found "
+                "in Ubuntu repositories."
             )
 
         version = match.group(1)
@@ -137,26 +170,24 @@ def get_latest_version(software_name):
 
         return version, url
 
-    # Node.js: Official release index
     elif name in ("node.js", "nodejs"):
         url = "https://nodejs.org/dist/index.json"
-
         response = requests.get(
             url, headers=HEADERS, timeout=TIMEOUT
         )
         response.raise_for_status()
 
         releases = response.json()
-
-        # Select the highest stable release version.
         stable_versions = []
 
         for release in releases:
             version = release.get("version", "")
 
-            if release.get("lts") is not False and version:
-                if re.fullmatch(r"v\d+\.\d+\.\d+", version):
-                    stable_versions.append(version)
+            if (
+                release.get("lts") is not False
+                and re.fullmatch(r"v\d+\.\d+\.\d+", version)
+            ):
+                stable_versions.append(version)
 
         if not stable_versions:
             raise ValueError(
@@ -165,17 +196,14 @@ def get_latest_version(software_name):
 
         def version_key(version):
             return tuple(
-                int(part) for part in version.lstrip("v").split(".")
+                int(part)
+                for part in version.lstrip("v").split(".")
             )
 
         latest = max(stable_versions, key=version_key)
-
         return latest.lstrip("v"), url
 
-    else:
-        raise ValueError(
-            f"Unsupported software: {software_name}"
-        )
+    raise ValueError(f"Unsupported software: {software_name}")
 
 
 def generate_report(softwares):
@@ -191,7 +219,6 @@ def generate_report(softwares):
 
         try:
             latest, source_url = get_latest_version(name)
-
             result = {
                 "name": name,
                 "latest_version": latest,
@@ -199,7 +226,13 @@ def generate_report(softwares):
                 "status": "Success",
             }
 
-        except (requests.RequestException, ValueError, KeyError) as error:
+        except (
+            requests.RequestException,
+            ValueError,
+            KeyError,
+            OSError,
+            subprocess.SubprocessError,
+        ) as error:
             result = {
                 "name": name,
                 "latest_version": "",
@@ -221,7 +254,7 @@ def generate_report(softwares):
 
 
 def save_report(report):
-    """Save the results to a CSV file."""
+    """Save the version report to CSV."""
 
     fieldnames = [
         "name",
@@ -233,9 +266,7 @@ def save_report(report):
     with REPORT_FILE.open(
         "w", newline="", encoding="utf-8"
     ) as file:
-        writer = csv.DictWriter(
-            file, fieldnames=fieldnames
-        )
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(report)
 
@@ -243,21 +274,34 @@ def save_report(report):
 
 
 def main():
-    """Run the software version tracking agent."""
+    """Run the version tracker or author lookup tool."""
 
-    try:
-        softwares = read_software_list()
+    parser = argparse.ArgumentParser(
+        description="Software Version Tracker and Author Tool"
+    )
+    parser.add_argument(
+        "--author",
+        metavar="FILE",
+        help="Find an explicitly declared author in a text file",
+    )
+    args = parser.parse_args()
 
-        if not softwares:
-            print("No software entries found in the CSV.")
-            return
+    if args.author:
+        print(get_author(args.author))
+        return
 
-        report = generate_report(softwares)
-        save_report(report)
+    softwares = read_software_list()
 
-    except (FileNotFoundError, ValueError, OSError) as error:
-        print(f"Agent failed: {error}")
+    if not softwares:
+        print("No software entries found in the CSV.")
+        return
+
+    report = generate_report(softwares)
+    save_report(report)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (FileNotFoundError, ValueError, OSError) as error:
+        print(f"Agent failed: {error}")

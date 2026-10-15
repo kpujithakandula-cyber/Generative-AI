@@ -1,0 +1,16 @@
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Temporary author detection test files
+sample_author.py
+sample_no_author.py
+test_author.html
+test_author.js
+test_author.json
+test_author.txt
+test_author.yaml
+test_author_block.js
+test_author_equals.txt
+test_author_python.py
