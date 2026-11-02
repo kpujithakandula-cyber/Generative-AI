@@ -1,0 +1,12 @@
+[project]
+name = "open-router-examples"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain>=1.4.0",
+    "langchain-google-genai>=4.4.0",
+    "langchain-openrouter>=0.2.9",
+    "python-dotenv>=1.2.3",
+]
