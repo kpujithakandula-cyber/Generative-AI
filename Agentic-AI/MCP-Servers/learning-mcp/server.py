@@ -2,7 +2,10 @@ from mcp.server import MCPServer
 
 
 # mcp server
-mcp = MCPServer("hello-mcp")
+mcp = MCPServer(
+	"Calculator",
+	instructions = "Simple Calculator"
+)
 
 @mcp.tool()
 def add(a: int, b: int) -> int:
@@ -64,5 +67,19 @@ def modulus(a: int, b: int) -> float:
 	"""
 	return a % b
 
+@mcp.resource("calc://constants")
+def constants() -> str:
+	return (
+		"pi = 3.14\n",
+		"e = 2.71\n",
+		"1 inch = 2.54 cm"
+	)
+@mcp.resource("calc://table/{number}")
+def table(number: int) -> str:
+	return "\n".join(f"{number} x {i} = {number * i}" for i in range(1, 11))
+
+app = mcp.streamable_http_app()
+
 if __name__ == "__main__":
-    mcp.run(transport = "stdio")
+    #mcp.run("stdio")
+	mcp.run("streamable-http", host="0.0.0.0", port=8000)
